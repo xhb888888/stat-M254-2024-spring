@@ -1,0 +1,203 @@
+---
+title: "Stat M254 Homework 1"
+subtitle: Due Apr 27 @ 11:59PM
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(Matrix)
+library(VennDiagram)
+library(sctransform)
+```
+
+# Part 1: Real data \[using the data from pbmc.csv\]
+
+## Problem 1
+
+![](images/WeChatf650912980d35a374b4d90976f5aebc5.png)
+
+```{r}
+cell_meta <- read.csv("data/pbmc.csv", row.names = 1)
+```
+
+```{r}
+# metric 1
+pbmc1 <- CreateSeuratObject(counts = cell_meta, project = "pbmc", 
+                           min.features = 200)
+pbmc1
+```
+
+```{r}
+pbmc <- CreateSeuratObject(counts = cell_meta, project = "pbmc")
+```
+
+```{r}
+# metric 2
+pbmc2 <- subset(pbmc, subset = nFeature_RNA > 300 & nFeature_RNA < 10000)
+pbmc2
+```
+
+```{r}
+# metric 3
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+pbmc3 <- subset(pbmc, subset = percent.mt < 15)
+pbmc3
+```
+
+**Answer:** `Metric 1(UMI)` filtered 100 samples. `Metric 2(gene occurrance)` filtered 297 samples. `Metric 3(mitochondrial reads)` filterd 56 samples.
+
+## Problem 2
+
+![](images/WeChatf17b4969d837624e2df0da039cf53fef.png)
+
+```{r}
+allcells <- colnames(pbmc)
+QC1 <- colnames(pbmc1)
+QC2 <- colnames(pbmc2)
+QC3 <- colnames(pbmc3)
+
+cells1 <- setdiff(allcells, QC1)
+cells2 <- setdiff(allcells, QC2)
+cells3 <- setdiff(allcells, QC3)
+```
+
+```{r}
+grid.newpage()
+# Draw a Venn diagram for the three sets of cell identifiers
+venn.plot <- draw.triple.venn(
+  area1 = length(cells1),
+  area2 = length(cells2),
+  area3 = length(cells3),
+  n12 = length(intersect(cells1, cells2)),
+  n23 = length(intersect(cells2, cells3)),
+  n13 = length(intersect(cells1, cells3)),
+  n123 = length(Reduce(intersect, list(cells1, cells2, cells3))),
+  category = c("QC method 1", "QC method 2", "QC method 3"),
+  fill = c("red", "blue", "green")
+)
+
+grid.draw(venn.plot)
+
+
+```
+
+**Answer:**
+
+All these three methods filtered out some similar cells but they also filtered dissimilar cells. In particular,
+
+-   `QC method 1` and `QC method 2` filtered out the 100 same cells
+
+-   `QC method 1` and `QC method 3` filtered out the 6 same cells
+
+-   `QC method 2` and `QC method 3` filtered out the 9 same cells
+
+-   `QC method 1` filtered out 47 cells which are not filtered by `QC method 2` and `QC method 3`
+
+-   `QC method 2` filtered out 194 cells which are not filtered by `QC method 1` and `QC method 3`
+
+-   `QC method 3` did not filter out any cells which are not filtered by `QC method 1` and `QC method 2`
+
+It is reasonable that cells filtered by `QC method 1` and `QC method 2` are similar because total UMI counts sums up UMI count in all genes and cells with less genes are likely to have less total UMI counts. It also makes sense that cells filtered by `QC method 3` are likely dissimilar to the other 2 QC methods since mitochondrial reads are not directly related to UMI counts or gene occurrance.
+
+## Problem 3
+
+![](images/WeChata72b8237e39ad531061149bf56619ae3.png)
+
+```{r}
+log1pPF = function(counts){
+  ls = colSums(counts)
+  meanLS = mean(ls)
+  mat = t(log1p(apply(counts, 1, function(x){x/ls * meanLS})))
+  return(mat)
+}
+```
+
+```{r}
+#filter data
+pbmc <- CreateSeuratObject(counts = cell_meta, project = "pbmc", 
+                           min.cells = 10, min.features = 200)
+
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+
+pbmc_filtered <- subset(pbmc, subset = nFeature_RNA > 300 & nFeature_RNA < 10000 
+               & percent.mt < 15)
+
+```
+
+```{r}
+pbmc_filtered
+```
+
+```{r}
+# Normalize the data
+pbmc_norm1 <- NormalizeData(pbmc_filtered, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 10000)
+pbmc_norm2 <- NormalizeData(pbmc_filtered, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 1000000)
+# run sctransform
+pbmc_norm3 <- SCTransform(pbmc_filtered, variable.features.n = 15708, 
+                          verbose = FALSE)
+
+log1pPF = function(seurat_obj) {
+  # Extracting the counts matrix from the Seurat object
+  counts <- GetAssayData(seurat_obj, slot = "counts")
+  
+  # Calculate column sums of the counts matrix
+  ls = colSums(counts)
+  meanLS = mean(ls)
+  
+  # Normalize counts, log-transform, and transpose
+  normalized_counts = t(counts) / ls * meanLS
+  mat = t(log1p(normalized_counts))
+  
+  return(mat)
+}
+
+pbmc_norm4 <- log1pPF(pbmc_filtered)
+```
+
+## Problem 4
+
+![](images/WeChat3eed95cc2facc961f47c0c6835db984a.png)
+
+## Problem 5
+
+![](images/WeChat6c0aece8171f2ba6c54569585bf81c39.png)
+
+# Part 2: Simulated data
+
+## Problem 6
+
+![](images/WeChat6145b34253d59f27bb4f5731346f3f1c.png)
+
+### 1)
+
+![](images/WeChat54abf928f531975f58842d5a7aa3cbcd.png)
+
+### 2)
+
+![](images/WeChatd8500ba3173f4917f9252442fb7730af.png)
+
+## Problem 7. Answering the following questions
+
+### 1) Apply four different normalization methods in question 3 on each simulated dataset.
+
+### 2) Draw 5 figures with gene means vs variances as in question 4 for each simulated dataset.
+
+### 3) Use Spearman correlation to evaluate normalization methods as in question 5 for each simulated dataset.
