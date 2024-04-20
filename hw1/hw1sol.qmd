@@ -22,6 +22,7 @@ library(patchwork)
 library(Matrix)
 library(VennDiagram)
 library(sctransform)
+library(ggplot2)
 ```
 
 # Part 1: Real data \[using the data from pbmc.csv\]
@@ -170,15 +171,90 @@ log1pPF = function(seurat_obj) {
 }
 
 pbmc_norm4 <- log1pPF(pbmc_filtered)
+pbmc_norm4 <- CreateSeuratObject(counts = pbmc_norm4, project = "pbmc")
 ```
 
 ## Problem 4
 
 ![](images/WeChat3eed95cc2facc961f47c0c6835db984a.png)
 
+
+
+```{r}
+library(gridExtra)
+
+plotMVP <- function(SeuratObj, name, type){
+  # Extract the counts matrix
+  counts_matrix <- GetAssayData(SeuratObj, slot = type)
+  counts_matrix <- as.matrix(counts_matrix)
+  
+  # Calculate the mean and variance of each gene
+  gene_means = rowMeans(counts_matrix)
+  gene_variances = apply(counts_matrix, 1, var) 
+  
+  # Create a scatter plot
+  gene_data = data.frame(
+    Mean = gene_means,
+    Variance = gene_variances
+  )
+  
+  p <- ggplot(gene_data, aes(x = Mean, y = Variance)) +
+    geom_point(alpha = 0.5) +  # alpha for transparency if points overlap
+    labs(x = "Mean Expression", y = "Gene Variance", 
+         title = paste0("Mean vs Variance: ", name)) +
+    theme_minimal()
+  
+  return(p)
+}
+
+p0 <- plotMVP(pbmc_filtered, "unNormalized", "counts")
+p1 <- plotMVP(pbmc_norm1, "log1pCP10K", "data")
+p2 <- plotMVP(pbmc_norm2, "log1pCP1M", "data")
+p3 <- plotMVP(pbmc_norm3, "scTransform", "data")
+p4 <- plotMVP(pbmc_norm4, "log1pPF", "counts")
+
+p0 + p1 + p2 + p3 + p4
+```
+**Answer:**
+It seems like all four normalization methods have shown some degrees of variance stabilization. In particular, 2 log scale transformations show strong variance stabilization. The plots show an arch shape which indicate that as mean increases, the variance initially increase and then drops quickly after a certain point. However, there are other concerns. We can see the variance gets close to 0 as mean increases for `log1pCP10K` and `log1pCP1M`. This could be a sign of so-called distribution collapsing, which detriment the power to detect meaningful variance after normalization. The `scTransform` method seems to be more robust. As mean increases, the variance initial increases and then shows an uniform pattern. The `log1pPF` method also shows a similar pattern as `scTransform`.
+
 ## Problem 5
 
 ![](images/WeChat6c0aece8171f2ba6c54569585bf81c39.png)
+```{r}
+pbmc_norm2
+```
+
+```{r}
+# Function to calculate Spearman correlation between mean and variance of gene expression
+calculateSpearman <- function(seurat_obj, type) {
+  # Get the data
+  data_matrix <- GetAssayData(seurat_obj, slot = type)
+  data_matrix <- as.matrix(data_matrix)
+  # Calculate mean and variance
+  means = rowMeans(data_matrix)
+  variances = apply(data_matrix, 1, var)
+  
+  # Calculate Spearman correlation
+  correlation = cor(means, variances, method = "spearman")
+  return(correlation)
+}
+
+# Calculate Spearman correlation for each normalization method
+spearman_filtered <- calculateSpearman(pbmc_filtered, "counts") 
+spearman_norm1 <- calculateSpearman(pbmc_norm1, "data")
+spearman_norm2 <- calculateSpearman(pbmc_norm2, "data")
+spearman_norm3 <- calculateSpearman(pbmc_norm3, "data") 
+spearman_norm4 <- calculateSpearman(pbmc_norm4, "counts")
+
+# Print the Spearman correlations
+print(paste("Spearman correlation for unnormalized data:", spearman_filtered))
+print(paste("Spearman correlation for log1pCP10K:", spearman_norm1))
+print(paste("Spearman correlation for log1pCP1M:", spearman_norm2))
+print(paste("Spearman correlation for scTransform:", spearman_norm3))
+print(paste("Spearman correlation for log1pPF:", spearman_norm3))
+
+```
 
 # Part 2: Simulated data
 
@@ -186,18 +262,146 @@ pbmc_norm4 <- log1pPF(pbmc_filtered)
 
 ![](images/WeChat6145b34253d59f27bb4f5731346f3f1c.png)
 
+
+
 ### 1)
 
 ![](images/WeChat54abf928f531975f58842d5a7aa3cbcd.png)
+
+```{r}
+library(BayesTools)
+#Simulate data
+
+ncells = 1000
+ngenes = 2000
+
+library_size = read.csv("data/library-size.csv", row.names = 1)[, 1]
+point_mass = read.csv("data/point-mass.csv", row.names = 1)[, 1]
+Simulate_counts_1 = matrix(0, ngenes, ncells)
+for(i in 1:ncells){
+  Expression_model = rpoint(ngenes, location = point_mass)
+  Simulate_counts_1[,i] = rpois(ngenes, 
+                              lambda = library_size[i] * Expression_model)
+}
+```
+
+**Answer:**
+
+$X_{gc}\sim Poisson(x_{c+})$ for $\lambda_{gc}\geq \alpha_g$
 
 ### 2)
 
 ![](images/WeChatd8500ba3173f4917f9252442fb7730af.png)
 
+```{r}
+ncells = 1000
+ngenes = 2000
+
+#Simulate data
+library_size = read.csv("data/library-size.csv", row.names = 1)[, 1]
+shape_rate = read.csv("data/shape+rate.csv", row.names = 1)[, c(1, 2)]
+Simulate_counts_2 = matrix(0, ngenes, ncells)
+for(i in 1:ncells){
+  Expression_model = rgamma(ngenes, rate = shape_rate[, 1], 
+                            shape = shape_rate[, 2])
+  Simulate_counts_2[,i] = rpois(ngenes, 
+                              lambda = library_size[i] * Expression_model)
+}
+```
+
+Since gamma distribution has the scaling property.
+
+$x_{c+}\lambda_{gc}\sim Gamma(x_{c+}\alpha_g, \beta_g)$
+
+$X_{gc}\sim NB(x_{c+}\alpha_g, \frac{\beta_g}{1+\beta_g})$
+
 ## Problem 7. Answering the following questions
 
 ### 1) Apply four different normalization methods in question 3 on each simulated dataset.
 
+```{r}
+sim1 <- CreateSeuratObject(counts = Simulate_counts_1)
+sim2 <- CreateSeuratObject(counts = Simulate_counts_2)
+```
+```{r}
+sim1_norm1 <- NormalizeData(sim1, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 10000)
+sim1_norm2 <- NormalizeData(sim1, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 1000000)
+# run sctransform
+sim1_norm3 <- SCTransform(sim1, variable.features.n = 2000, 
+                          verbose = FALSE)
+
+sim1_norm4 <- log1pPF(sim1)
+sim1_norm4 <- CreateSeuratObject(counts = sim1_norm4, project = "sim1")
+
+sim2_norm1 <- NormalizeData(sim2, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 10000)
+sim2_norm2 <- NormalizeData(sim2, 
+                            normalization.method = "LogNormalize", 
+                            scale.factor = 1000000)
+# run sctransform
+sim2_norm3 <- SCTransform(sim2, variable.features.n = 2000, 
+                          verbose = FALSE)
+
+sim2_norm4 <- log1pPF(sim2)
+sim2_norm4 <- CreateSeuratObject(counts = sim2_norm4, project = "sim2")
+
+```
+
 ### 2) Draw 5 figures with gene means vs variances as in question 4 for each simulated dataset.
 
+```{r}
+
+p1 <- plotMVP(sim1_norm1, "log1pCP10K", "data")
+p2 <- plotMVP(sim1_norm2, "log1pCP1M", "data")
+p3 <- plotMVP(sim1_norm3, "scTransform", "data")
+p4 <- plotMVP(sim1_norm4, "log1pPF", "counts")
+
+p1 + p2 + p3 + p4
+```
+```{r}
+p1 <- plotMVP(sim2_norm1, "log1pCP10K", "data")
+p2 <- plotMVP(sim2_norm2, "log1pCP1M", "data")
+p3 <- plotMVP(sim2_norm3, "scTransform", "data")
+p4 <- plotMVP(sim2_norm4, "log1pPF", "counts")
+
+p1 + p2 + p3 + p4
+```
+
 ### 3) Use Spearman correlation to evaluate normalization methods as in question 5 for each simulated dataset.
+```{r}
+# Calculate Spearman correlation for each normalization method
+
+spearman_norm1 <- calculateSpearman(sim1_norm1, "data")
+spearman_norm2 <- calculateSpearman(sim1_norm2, "data")
+spearman_norm3 <- calculateSpearman(sim1_norm3, "data") 
+spearman_norm4 <- calculateSpearman(sim1_norm4, "counts")
+
+# Print the Spearman correlations
+print(paste("Spearman correlation for log1pCP10K:", spearman_norm1))
+print(paste("Spearman correlation for log1pCP1M:", spearman_norm2))
+print(paste("Spearman correlation for scTransform:", spearman_norm3))
+print(paste("Spearman correlation for log1pPF:", spearman_norm3))
+```
+
+```{r}
+
+# Calculate Spearman correlation for each normalization method
+
+spearman_norm1 <- calculateSpearman(sim2_norm1, "data")
+spearman_norm2 <- calculateSpearman(sim2_norm2, "data")
+spearman_norm3 <- calculateSpearman(sim2_norm3, "data") 
+spearman_norm4 <- calculateSpearman(sim2_norm4, "counts")
+
+# Print the Spearman correlations
+print(paste("Spearman correlation for log1pCP10K:", spearman_norm1))
+print(paste("Spearman correlation for log1pCP1M:", spearman_norm2))
+print(paste("Spearman correlation for scTransform:", spearman_norm3))
+print(paste("Spearman correlation for log1pPF:", spearman_norm3))
+```
+```
+
