@@ -1,0 +1,284 @@
+---
+title: "Stat M254 Homework 1"
+subtitle: Due May 18 @ 11:59PM
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, warning = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(fastglmpca)
+library(ggpubr)
+```
+
+# Problem 1
+
+![](images/WeChat2d84078b40c40ac2c923fde24523894d.png)
+
+**Answer:**
+
+```{r}
+cell_meta <- read.csv("../hw1/data/pbmc.csv", row.names = 1)
+```
+
+```{r}
+pbmc <- CreateSeuratObject(counts = cell_meta, project = "pbmc")
+```
+
+```{r}
+pbmc <- NormalizeData(pbmc,
+                      normalization.method = "LogNormalize",
+                      scale.factor = 10000)
+```
+```{r}
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", 
+                                  nfeatures = 2000)
+```
+```{r}
+pbmc <- ScaleData(pbmc)
+```
+
+
+```{r}
+pbmc <- RunPCA(pbmc,
+               npcs = 100)
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+```
+```{r}
+DimHeatmap(pbmc, dims = 1:5, cells = 500, balanced = TRUE)
+```
+```{r}
+VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+```
+
+
+
+# Problem 2
+
+![](images/WeChata138b99a0f9ee393b27b40b545a5fe8f.png)
+
+**Answer:**
+
+```{r}
+pca_embeddings <- Embeddings(pbmc[["pca"]])
+```
+
+```{r}
+variance <- rep(0, length(pca_embeddings[1,]))
+
+```
+
+
+```{r}
+for (i in 1:length(variance)){
+  variance[i] <- var(pca_embeddings[, i])
+}
+```
+
+
+```{r}
+eigenvalue <- Stdev(object = pbmc[["pca"]])^2
+```
+
+```{r}
+all(variance == eigenvalue)
+```
+
+```{r}
+q3compare <- data.frame(variance = variance, eigenvalue = eigenvalue, 
+                        diff = variance - eigenvalue)
+```
+
+```{r}
+q3compare
+```
+
+
+Their differences are very close to 0. It is reasonable to conclude they are the same and the slight difference is due to the rounding error of the numerical precision.
+
+# Problem 3
+
+![](images/370371715231527_.pic.jpg)
+
+**Answer:**
+
+```{r}
+loading_100 <- Loadings(object = pbmc[["pca"]])
+```
+
+```{r}
+length(loading_100[1,])
+```
+
+
+```{r}
+for (i in (1:length(loading_100[1, ]))){
+  print(norm(loading_100[, i], type="2"))
+}
+
+```
+
+```{r}
+#Randomly selected some to check
+for (i in (1:10)){
+  indices <- sample(1:100, 2, replace=F) 
+  print(sum(loading_100[, indices[1]]*loading_100[, indices[2]]))
+}
+  
+```
+
+The length of each loading vector is 1. The inner product of any two loading vectors is 0. The output of R is very closed to 0 but not exactly 0 because of the numerical precision.
+
+
+
+# Problem 4
+
+![](images/370381715231543_.pic.jpg)
+**Answer:**
+
+```{r}
+scale <- GetAssayData(object = pbmc, layer = "scale.data")
+```
+
+```{r}
+dim(t(scale))
+```
+
+```{r}
+pca_embeddings <- Embeddings(pbmc[["pca"]])
+
+pca_embeddings_matrix <- as.matrix(pca_embeddings)
+
+```
+
+```{r}
+loading_100 <- loading_100[match(rownames(scale), rownames(loading_100)), ]
+
+# Check if the rownames now match
+all(rownames(loading_100) == rownames(scale))
+```
+
+
+
+```{r}
+X_hat_20 <- pca_embeddings_matrix[, 1:20] %*% t(loading_100[, 1:20])
+X_hat_40 <- pca_embeddings_matrix[, 1:40] %*% t(loading_100[, 1:40])
+X_hat_60 <- pca_embeddings_matrix[, 1:60] %*% t(loading_100[, 1:60])
+X_hat_80 <- pca_embeddings_matrix[, 1:80] %*% t(loading_100[, 1:80])
+X_hat_100 <- pca_embeddings_matrix[, 1:100] %*% t(loading_100[, 1:100])
+```
+
+```{r}
+
+mse20 <- mean((X_hat_20 - t(scale))^2)
+mse40 <- mean((X_hat_40 - t(scale))^2)
+mse60 <- mean((X_hat_60 - t(scale))^2)
+mse80 <- mean((X_hat_80 - t(scale))^2)
+mse100 <- mean((X_hat_100 - t(scale))^2)
+```
+
+```{r}
+ggplot(data = data.frame(x = c(20, 40, 60, 80, 100), 
+                         y = c(mse20, mse40, mse60, mse80, mse100)), 
+       aes(x = x, y = y)) + geom_point() + geom_line() +
+  labs(title = "MSE vs. Number of PCs", x = "Number of PCs", y = "MSE")
+```
+
+
+
+
+# Problem 5
+
+![](images/370391715231553_.pic.jpg)
+
+**Answer:**
+
+```{r}
+var_genes <- VariableFeatures(pbmc)
+```
+
+```{r}
+pbmc_subset <- subset(pbmc, features = var_genes)
+```
+
+```{r}
+pbmc_subset
+```
+
+```{r}
+counts <- pbmc_subset[['RNA']]@layers$counts
+```
+
+```{r}
+fit0 <- init_glmpca_pois(counts, K = 10)
+```
+
+```{r}
+fit <- fit_glmpca_pois(counts,fit0 = fit0, verbose = FALSE)
+```
+
+```{r}
+glmpca <- data.frame(pc1 = fit$V[,1],
+                   pc2 = fit$V[,2])
+glmpca_plot <- ggplot(glmpca, aes(x = pc1,y = pc2)) +
+  geom_point()
+```
+
+```{r}
+pca <- data.frame(pc1 = pca_embeddings_matrix[,1],
+                   pc2 = pca_embeddings_matrix[,2])
+pca_plot <- ggplot(pca,aes(x = pc1,y = pc2)) +
+  geom_point()
+```
+
+```{r}
+ggarrange(pca_plot, glmpca_plot, 
+          labels = c("PCA", "GLMPCA"),
+          ncol = 2, nrow = 1)
+```
+
+
+# Problem 6
+
+![](images/370401715231560_.pic.jpg)
+
+**Answer:**
+
+```{r}
+scale <- pbmc[['RNA']]@layers$scale.data
+```
+
+```{r}
+distanceM <- dist(t(scale))
+```
+
+
+```{r}
+MDS <- cmdscale(distanceM, k = 2)
+```
+
+```{r}
+mds_df <- data.frame(pc1 = MDS[, 1], pc2 = MDS[, 2])
+
+mds_plot <- ggplot(mds_df,aes(x = pc1, y = pc2)) +
+  geom_point()
+```
+
+```{r}
+ggarrange(mds_plot, pca_plot, glmpca_plot, 
+          labels = c("MDS", "PCA", "GLMPCA"),
+          ncol = 2, nrow = 2)
+```
+
+We can see that MDS and PCA are very similar in shape, while GLMPCA is different from the other two.

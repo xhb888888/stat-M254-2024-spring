@@ -343,6 +343,7 @@ $p(x;\boldsymbol{\theta})=\int_{0}^{\infty}p(x;\theta)p(\theta)dx$
 
 Since pdf of poisson and gamma distributions are known, we have:
 
+```{=tex}
 \begin{align*}
 p(x;\boldsymbol{\theta})&=\int_{0}^{\infty}\frac{\theta^xe^{-\theta}}{x!}\frac{1}{\Gamma(\alpha)(\frac{p}{1-p})^\alpha}\theta^{\alpha-1}e^{-\theta(\frac{1-p}{p})}dx\\
 &=\frac{(1-p)^\alpha p^{-\alpha}}{\Gamma(\alpha)x!}\int_{0}^{\infty}\theta^{x+\alpha-1}e^{-\frac{\theta}{p}}dx\\
@@ -350,7 +351,7 @@ p(x;\boldsymbol{\theta})&=\int_{0}^{\infty}\frac{\theta^xe^{-\theta}}{x!}\frac{1
 &=\frac{\Gamma(x+\alpha)}{\Gamma(\alpha)x!}(1-p)^\alpha p^x\\
 &={x+\alpha-1 \choose x}(1-p)^\alpha p^x \quad \text{where } x=0,1,2,\cdots
 \end{align*}
-
+```
 Since $p(x;\boldsymbol{\theta})$ is a pmf of negative binomial distribution, we have $X\sim NB(\alpha, p)$
 
 ## Problem 7. Answering the following questions
@@ -468,5 +469,3 @@ print(paste("Spearman correlation for log1pCP1M:", spearman_norm2))
 print(paste("Spearman correlation for scTransform:", spearman_norm3))
 print(paste("Spearman correlation for log1pPF:", spearman_norm3))
 ```
-
-
