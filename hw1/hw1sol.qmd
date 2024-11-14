@@ -228,7 +228,9 @@ Before normalization, There exists outlier genes with extreme variance, extreme 
 
 ## Problem 5
 
-![](images/WeChat6c0aece8171f2ba6c54569585bf81c39.png) **Answer:**
+![](images/WeChat6c0aece8171f2ba6c54569585bf81c39.png) 
+
+**Answer:**
 
 ```{r}
 # Function to calculate Spearman correlation between mean and variance of gene expression

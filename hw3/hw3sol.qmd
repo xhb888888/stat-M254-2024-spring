@@ -1,0 +1,271 @@
+---
+title: "Stat M254 Homework 3"
+subtitle: Due June 1 @ 11:59PM
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, warning = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(fastglmpca)
+library(ggpubr)
+library(motifcluster)
+library(cluster)
+library(factoextra)
+library(mclust)
+library(tightClust)
+```
+
+In this homework, you should use a new PBMC dataset with the given cell type labels stored as the Seurat object (v5) `PBMC_w_labels.rds`. This dataset has nine diFerent cell types.
+
+# Problem 1
+
+![](images/WeChat07ce59eced2bd161bdd317a3982fd0ee.png)
+
+```{r}
+pbmc <- readRDS("data/PBMC_w_labels.rds")
+```
+
+```{r}
+pbmc <- NormalizeData(pbmc,
+                      normalization.method = "LogNormalize",
+                      scale.factor = 10000)
+```
+
+```{r}
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", 
+                                  nfeatures = 2000)
+```
+
+```{r}
+pbmc <- ScaleData(pbmc)
+```
+
+```{r}
+pbmc <- RunPCA(pbmc,
+               npcs = 100)
+```
+
+
+# Problem 2
+
+![](images/5241716606677_.pic.jpg)
+
+```{r}
+pca_embeddings <- Embeddings(pbmc[["pca"]])[, 1:50]
+```
+
+```{r}
+kmeans_res <- kmeans(pca_embeddings, centers = 9)
+```
+
+```{r}
+kmeanspp_res <- kmeanspp(pca_embeddings, k = 9)
+```
+
+```{r}
+hclust_res <- hclust(dist(pca_embeddings, method = "euclidean"), 
+                     method = "complete")
+hclust_res <- cutree(hclust_res, k = 9)
+```
+
+```{r}
+pbmc <- FindNeighbors(pbmc, dims = 1:50)
+pbmc <- FindClusters(pbmc, resolution = 0.23)
+```
+
+
+
+```{r}
+original_labels <- pbmc@meta.data$celltype
+
+PC1 <- pca_embeddings[, 1]
+PC2 <- pca_embeddings[, 2]
+kmeans_clusters <- kmeans_res$cluster
+kmeanspp_clusters <- kmeanspp_res$cluster
+# Create a data frame with PC1, PC2, and cluster labels
+df <- data.frame(PC_1 = PC1, PC_2 = PC2, kmeans_clusters = as.factor(kmeans_clusters), kmeanspp_clusters = as.factor(kmeanspp_clusters), hclust_clusters = as.factor(hclust_res), original_labels = as.factor(original_labels))
+```
+
+
+```{r}
+g0 <- ggplot(df, aes(x = PC_1, y = PC_2, color = original_labels)) +
+  geom_point() +
+  labs(title = "original_labels",
+       x = "PC_1",
+       y = "PC_2",
+       color = "original_labels") +
+  theme_minimal()
+
+g1 <- ggplot(df, aes(x = PC_1, y = PC_2, color = kmeans_clusters)) +
+  geom_point() +
+  labs(title = "kmean",
+       x = "PC_1",
+       y = "PC_2",
+       color = "kmeans_clusters") +
+  theme_minimal()
+
+g2 <- ggplot(df, aes(x = PC_1, y = PC_2, color = kmeanspp_clusters)) +
+  geom_point() +
+  labs(title = "kmean++",
+       x = "PC_1",
+       y = "PC_2",
+       color = "kmeanspp_clusters") +
+  theme_minimal()
+
+g3 <-ggplot(df, aes(x = PC_1, y = PC_2, color = hclust_clusters)) +
+  geom_point() +
+  labs(title = "hiarachical cluster",
+       x = "PC_1",
+       y = "PC_2",
+       color = "hclust_clusters") +
+  theme_minimal()
+```
+
+```{r}
+ggarrange(g0, g1, g2, g3, ncol = 2, nrow = 2)
+```
+
+```{r}
+DimPlot(pbmc, reduction = "pca")
+```
+
+
+# Problem 3
+
+![](images/5251716606683_.pic.jpg)
+
+
+```{r}
+# silhouette
+kmean_sil <- silhouette(kmeans_clusters, dist(pca_embeddings, method = "euclidean"))
+
+kmeanpp_sil <- silhouette(kmeanspp_clusters, dist(pca_embeddings, method = "euclidean"))
+
+hclust_sil <- silhouette(hclust_res, dist(pca_embeddings, method = "euclidean"))
+
+seurat_sil <- silhouette(as.numeric(Idents(pbmc)), dist(pca_embeddings, method = "euclidean"))
+
+```
+
+
+```{r}
+summary(kmean_sil)$avg.width
+summary(kmeanpp_sil)$avg.width
+summary(hclust_sil)$avg.width
+summary(seurat_sil)$avg.width
+```
+
+
+```{r}
+# ARI
+adjustedRandIndex(original_labels, kmeans_clusters)
+adjustedRandIndex(original_labels, kmeanspp_clusters)
+adjustedRandIndex(original_labels, hclust_res)
+adjustedRandIndex(original_labels, as.numeric(Idents(pbmc)))
+
+```
+
+By evaluating the average of `silhouette` score for each cluster method, hierarchical clustering has the highest score, which means it has the best performance in terns of this measure.  By evaluating the `ARI` score, the `kmeans++` method has the highest score, which means it has the best performance in terms of this measure. 
+
+The difference is because the `silhouette` score is measures how similar each point is to its own cluster compared to other clusters, while the `ARI` score measures the similarity between the clustering result and a ground truth (reference) classification. It highlights the difference of focus between 2 methods. 
+
+
+
+
+
+# Problem 4
+
+![](images/5261716606694_.pic.jpg)
+```{r}
+param <- c(10, 20, 50, 20, 20, 20, 20, 20, 20)
+snn <-c(1/15, 1/15, 1/15, 1/7, 1/10, 1/15, 1/15, 1/15, 1/15)
+resol <- c(0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.5, 1, 1.5)
+
+for (i in 1:9){
+  pbmc <- FindNeighbors(pbmc, k.param = param[i], prune.SNN = snn[i])
+  pbmc <- FindClusters(pbmc, resolution = resol[i])
+}
+
+```
+
+
+By observing the output, increasing `k.params` will decrease number of clusters. Decreasing `Prune.SNN` will also decrease number of clusters (If `Prune.SNN` is too large, we might get an error since too many of edge is set to 0). In this study, I use `1/7` instead of `1/5` since it gives me error with `1/5`. Increasing `resolution` will increase number of clusters.
+
+
+# Problem 5
+
+![](images/5271716606703_.pic.jpg)
+
+```{r}
+set.seed(123)
+z <- clusGap(pca_embeddings, FUN = kmeans, K.max = 15, B = 5)
+```
+
+```{r}
+fviz_gap_stat(z)
+```
+The best k for `kmean` is 6 based on gap statistic. Due to time constraint, the number of permutation is set to 5 which will not give consistent result because of standard error. If we increase the number of permutation, we will get more consistent result. 
+
+
+
+
+
+# Problem 6
+
+![](images/5281716606710_.pic.jpg)
+
+```{r}
+tight_clus <- tight.clust(pca_embeddings, target = 9, k.min = 15)
+```
+```{r}
+
+PC1 <- pca_embeddings[, 1]
+PC2 <- pca_embeddings[, 2]
+# Create a data frame with PC1, PC2, and cluster labels
+df <- data.frame(PC_1 = PC1, PC_2 = PC2, tight_clusters = as.factor(tight_clus$cluster))
+```
+```{r}
+levels(df$tight_clusters)
+```
+
+
+```{r}
+custom_colors <- c(
+  "-1" = "gray",
+  "1" = "#377EB8",
+  "2" = "#4DAF4A",
+  "3" = "#984EA3",
+  "4" = "#FF7F00",
+  "5" = "#FFFF33",
+  "6" = "#A65628",
+  "7" = "#F781BF",
+  "8" = "#999999",
+  "9" = "#66C2A5"
+)
+
+ggplot(df, aes(x = PC_1, y = PC_2, color = tight_clusters)) +
+  geom_point() +
+  labs(title = "tight_clusters",
+       x = "PC_1",
+       y = "PC_2",
+       color = "tight_clusters") +
+  scale_color_manual(values = custom_colors, na.translate = FALSE) +
+  theme_minimal()
+
+```
+
+
+
+`target` is the total number of clusters we want. `k.min` is the a starting point for the iterations. The algorithm will stop when k is updated to be smaller than certain threhold. Some cells are labeled as -1 because they are not being assigned to any of the clusters, which is a characteristic of tight cluster.

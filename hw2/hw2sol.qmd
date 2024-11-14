@@ -1,5 +1,5 @@
 ---
-title: "Stat M254 Homework 1"
+title: "Stat M254 Homework 2"
 subtitle: Due May 18 @ 11:59PM
 output:
   pdf_document:
