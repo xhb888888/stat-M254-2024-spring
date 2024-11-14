@@ -1,0 +1,229 @@
+---
+title: "Stat M254 Final Project"
+subtitle: Due June 16 @ 11:59PM
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, warning = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(fastglmpca)
+library(ggpubr)
+library(dplyr)
+
+```
+
+```{r}
+packageVersion("Seurat")
+```
+
+```{r}
+set.seed(2024)
+```
+
+# Loading dataset 2
+
+```{r}
+data <- readRDS(file = "Datasets_final/Pancreas.rds")
+```
+
+
+# Preprocessing dataset 2
+
+
+```{r}
+data <- CreateSeuratObject(counts = data, project = "data",
+                            min.cells = 3, min.features = 200)
+```
+
+
+```{r}
+VlnPlot(data, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+```
+
+```{r}
+FeatureScatter(data, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+```{r}
+data
+```
+
+
+# Normalizing dataset 2 
+
+```{r}
+data <- SCTransform(data, variable.features.n = 2000, verbose = FALSE)
+```
+
+
+# Find highly variable genes
+
+
+```{r}
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(data), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(data)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+```
+
+# Scaling dataset 2 and run PCA
+
+```{r}
+data <- RunPCA(data, npcs = 100)
+```
+
+```{r}
+DimHeatmap(data, dims = 1:9, cells = 1000, balanced = TRUE)
+```
+
+
+```{r}
+VizDimLoadings(data, dims = 1:2, reduction = "pca")
+```
+
+```{r}
+DimPlot(data, reduction = "pca") + NoLegend()
+```
+
+```{r}
+ElbowPlot(data)
+```
+10 should be reasonable number of PCs to use for clustering
+
+# Clustering dataset 2
+
+
+```{r}
+data <- FindNeighbors(data, k.param = 30, dims = 1:10, prune.SNN = 1/15)
+data <- FindClusters(data, algorithm = 1, resolution = 0.8)
+```
+
+```{r}
+data <- RunUMAP(data, dims = 1:10, n.neighbors = 10, seed.use = 2024)
+```
+
+
+
+```{r}
+DimPlot(data, reduction = "umap", label = TRUE)
+```
+
+
+
+
+```{r}
+data.markers <- FindAllMarkers(data, only.pos = TRUE)
+
+data.markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1)
+```
+
+```{r}
+data.markers %>%
+    group_by(cluster) %>%
+    filter(avg_log2FC > 1) %>%
+    slice_head(n = 3) %>%
+    ungroup() -> top10
+DoHeatmap(data, features = top10$gene) + NoLegend()
+```
+
+```{r}
+FindMarkers(object = data, ident.1 = 6, ident.2 = 9)
+```
+
+```{r}
+VlnPlot(data, features = c("ENSG00000138796"))
+```
+
+
+
+```{r}
+current_clusters <- Idents(data)
+print(table(current_clusters))
+```
+
+```{r}
+Idents(data) <- current_clusters
+
+# Verify the new cluster assignments
+print(table(Idents(data)))
+
+# Plot the UMAP with the combined clusters
+DimPlot(data, reduction = "umap", label = TRUE)
+```
+```{r}
+data.markers %>%
+    group_by(cluster) %>%
+    filter(avg_log2FC > 1) %>%
+    slice_head(n = 2) %>%
+    ungroup() -> top10
+DoHeatmap(data, features = top10$gene) + NoLegend()
+```
+
+```{r}
+new.cluster.ids <- c(
+  "6" = "PP ",
+  "9" = "alpha",
+  "0" = "NA",
+  "1" = "NA",
+  "2" = "NA",
+  "3" = "NA",
+  "4" = "NA",
+  "5" = "NA",
+  "7" = "NA",
+  "8" = "NA"
+)
+```
+
+```{r}
+data <- RenameIdents(data, new.cluster.ids)
+```
+
+```{r}
+DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend() + 
+  ggtitle("UMAP Plot with Relabeled Clusters")
+```
+
+```{r}
+print(levels(Idents(data)))
+```
+
+```{r}
+# Create a vector of cell type labels based on the renamed identities
+cell_type_labels <- Idents(data)
+
+# Add the cell type labels to the metadata
+data$cell_type <- cell_type_labels
+```
+
+
+```{r}
+metadata <- data@meta.data
+```
+
+```{r}
+metadata
+```
+
+
+```{r}
+saveRDS(metadata, "part2_meta.rds")
+```
+

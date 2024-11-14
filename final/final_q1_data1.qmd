@@ -1,0 +1,249 @@
+---
+title: "Stat M254 Final Project"
+subtitle: Due June 16 @ 11:59PM
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    toc: yes
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, warning = FALSE,
+                      message = FALSE)
+```
+
+```{r}
+library(Seurat)
+library(ggplot2)
+library(fastglmpca)
+library(ggpubr)
+library(dplyr)
+
+```
+
+```{r}
+packageVersion("Seurat")
+```
+
+```{r}
+set.seed(2024)
+```
+
+# Loading dataset 1
+
+```{r}
+data1_rds <- readRDS(file = "Datasets_final/BoneMarrow_dataset1.rds")
+```
+
+
+# Preprocessing dataset 1
+
+
+```{r}
+data1 <- CreateSeuratObject(counts = data1_rds, project = "data1",
+                            min.cells = 3, min.features = 200)
+```
+
+
+```{r}
+VlnPlot(data1, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+```
+
+```{r}
+FeatureScatter(data1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+```{r}
+data1 <- subset(data1, subset = nCount_RNA > 200 & nCount_RNA < 15000)
+```
+
+```{r}
+data1
+```
+
+
+# Normalizing dataset 1 
+
+```{r}
+data1 <- NormalizeData(data1, normalization.method = "LogNormalize",
+                      scale.factor = 10000)
+```
+
+
+# Find highly variable genes
+
+```{r}
+data1 <- FindVariableFeatures(data1, selection.method = "vst", nfeatures = 2000)
+```
+
+
+```{r}
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(data1), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(data1)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+```
+
+# Scaling dataset 1 and run PCA
+
+```{r}
+data1 <- ScaleData(data1)
+```
+
+```{r}
+data1 <- RunPCA(data1, npcs = 100)
+```
+
+```{r}
+DimHeatmap(data1, dims = 1:5, cells = 500, balanced = TRUE)
+```
+
+
+```{r}
+VizDimLoadings(data1, dims = 1:2, reduction = "pca")
+```
+```{r}
+DimPlot(data1, reduction = "pca") + NoLegend()
+```
+```{r}
+ElbowPlot(data1)
+```
+15 should be reasonable number of PCs to use for clustering
+
+# Clustering dataset 1
+
+
+```{r}
+data1 <- FindNeighbors(data1, k.param = 12, dims = 1:15)
+data1 <- FindClusters(data1, algorithm = 1, resolution = 1.5)
+```
+
+```{r}
+data1 <- RunUMAP(data1, dims = 1:15, n.neighbors = 50)
+```
+
+
+
+```{r}
+DimPlot(data1, reduction = "umap", label = TRUE)
+```
+
+
+```{r}
+cluster2.markers <- FindMarkers(data1, ident.1 = 2)
+```
+
+```{r}
+head(cluster2.markers, n = 5)
+```
+
+
+```{r}
+data1.markers <- FindAllMarkers(data1, only.pos = TRUE)
+data1.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1)
+```
+
+```{r}
+data1.markers %>%
+    group_by(cluster) %>%
+    filter(avg_log2FC > 1) %>%
+    slice_head(n = 2) %>%
+    ungroup() -> top10
+DoHeatmap(data1, features = top10$gene) + NoLegend()
+```
+
+
+```{r}
+VlnPlot(data1, features = c("ENSG00000104918"))
+```
+```{r}
+FeaturePlot(data1, features = c("ENSG00000197353"))
+```
+```{r}
+current_clusters <- Idents(data1)
+print(table(current_clusters))
+```
+
+```{r}
+new_clusters <- current_clusters
+new_clusters[new_clusters %in% c("0", "1", "9")] <- "0"
+new_clusters[new_clusters %in% c("3", "4", "13")] <- "3"
+new_clusters[new_clusters %in% c("2", "7", "8", "19")] <- "2"
+new_clusters[new_clusters %in% c("5", "14")] <- "5"
+new_clusters[new_clusters %in% c("11", "15", "18")] <- "15"
+new_clusters[new_clusters %in% c("6", "17")] <- "17"
+Idents(data1) <- new_clusters
+
+# Verify the new cluster assignments
+print(table(Idents(data1)))
+
+# Plot the UMAP with the combined clusters
+DimPlot(data1, reduction = "umap", label = TRUE)
+```
+```{r}
+data1.markers %>%
+    group_by(cluster) %>%
+    filter(avg_log2FC > 1) %>%
+    slice_head(n = 2) %>%
+    ungroup() -> top10
+DoHeatmap(data1, features = top10$gene) + NoLegend()
+```
+```{r}
+VlnPlot(data1, features = c("ENSG00000132514"))
+```
+
+```{r}
+new.cluster.ids <- c(
+  "16" = "Non-classical monocyte cell",
+  "5" = "CD8 T cell",
+  "10" = "Mucosal-associated invariant T cell",
+  "2" = "Natural killer cell",
+  "17" = "Plasma cell",
+  "12" = "Plasmacytoid dendritic cell",
+  "3" = "Dendritic cell",
+  "20" = "Myeloid progenitor",
+  "15" = "Hematopoietic stem cell",
+  "0" = "Lymphocyte cell"
+)
+```
+
+```{r}
+data1 <- RenameIdents(data1, new.cluster.ids)
+```
+
+```{r}
+DimPlot(data1, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend() + 
+  ggtitle("UMAP Plot with Relabeled Clusters")
+```
+```{r}
+print(levels(Idents(data1)))
+```
+
+```{r}
+# Create a vector of cell type labels based on the renamed identities
+cell_type_labels <- Idents(data1)
+
+# Add the cell type labels to the metadata
+data1$cell_type <- cell_type_labels
+```
+
+
+```{r}
+metadata <- data1@meta.data
+```
+
+```{r}
+metadata
+```
+```{r}
+saveRDS(metadata, "data1_meta_data.rds")
+```
+
